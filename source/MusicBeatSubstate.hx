@@ -1,37 +1,14 @@
 package;
 
-import lime.app.Application;
-import openfl.Lib;
-import flixel.text.FlxText;
-import flixel.input.gamepad.FlxGamepad;
 import Conductor.BPMChangeEvent;
 import flixel.FlxG;
 import flixel.FlxSubState;
-#if mobileC
-import ui.FlxVirtualPad;
-import flixel.input.actions.FlxActionInput;
-#end
 
 class MusicBeatSubstate extends FlxSubState
 {
 	public function new()
 	{
 		super();
-	}
-
-	override function destroy()
-	{
-		controls.removeFlxInput(trackedinputs);
-		Application.current.window.onFocusIn.remove(onWindowFocusOut);
-		Application.current.window.onFocusIn.remove(onWindowFocusIn);
-		super.destroy();
-	}
-
-	override function create()
-	{
-		super.create();
-		Application.current.window.onFocusIn.add(onWindowFocusIn);
-		Application.current.window.onFocusOut.add(onWindowFocusOut);
 	}
 
 	private var lastBeat:Float = 0;
@@ -44,70 +21,22 @@ class MusicBeatSubstate extends FlxSubState
 	inline function get_controls():Controls
 		return PlayerSettings.player1.controls;
 
-	#if mobileC
-	var _virtualpad:FlxVirtualPad;
-
-	var trackedinputs:Array<FlxActionInput> = [];
-
-	// adding virtualpad to state
-	public function addVirtualPad(?DPad:FlxDPadMode, ?Action:FlxActionMode) {
-		_virtualpad = new FlxVirtualPad(DPad, Action);
-		_virtualpad.alpha = 0.75;
-		add(_virtualpad);
-		controls.setVirtualPad(_virtualpad, DPad, Action);
-		trackedinputs = controls.trackedinputs;
-		controls.trackedinputs = [];
-
-		#if android
-		controls.addAndroidBack();
-		#end
-	}
-
-	#else
-	public function addVirtualPad(?DPad, ?Action){};
-	#end
-
 	override function update(elapsed:Float)
 	{
-		// everyStep();
-		var nextStep = updateCurStep();
+		//everyStep();
+		var oldStep:Int = curStep;
 
-		if (nextStep >= 0)
-		{
-			if (nextStep > curStep)
-			{
-				for (i in curStep...nextStep)
-				{
-					curStep++;
-					updateBeat();
-					stepHit();
-				}
-			}
-			else if (nextStep < curStep)
-			{
-				// Song reset?
-				curStep = nextStep;
-				updateBeat();
-				stepHit();
-			}
-		}
+		updateCurStep();
+		curBeat = Math.floor(curStep / 4);
 
-		var gamepad:FlxGamepad = FlxG.gamepads.lastActive;
-		if (gamepad != null)
-			KeyBinds.gamepad = true;
-		else
-			KeyBinds.gamepad = false;
+		if (oldStep != curStep && curStep > 0)
+			stepHit();
+
 
 		super.update(elapsed);
 	}
 
-	private function updateBeat():Void
-	{
-		lastBeat = curBeat;
-		curBeat = Math.floor(curStep / 4);
-	}
-
-	private function updateCurStep():Int
+	private function updateCurStep():Void
 	{
 		var lastChange:BPMChangeEvent = {
 			stepTime: 0,
@@ -120,7 +49,7 @@ class MusicBeatSubstate extends FlxSubState
 				lastChange = Conductor.bpmChangeMap[i];
 		}
 
-		return lastChange.stepTime + Math.floor((Conductor.songPosition - lastChange.songTime) / Conductor.stepCrochet);
+		curStep = lastChange.stepTime + Math.floor((Conductor.songPosition - lastChange.songTime) / Conductor.stepCrochet);
 	}
 
 	public function stepHit():Void
@@ -131,32 +60,6 @@ class MusicBeatSubstate extends FlxSubState
 
 	public function beatHit():Void
 	{
-		// do literally nothing dumbass
-	}
-
-	function onWindowFocusOut():Void
-	{
-		if (PlayState.inDaPlay)
-		{
-			if (!PlayState.instance.paused && !PlayState.instance.endingSong && PlayState.instance.songStarted)
-			{
-				Debug.logTrace("Lost Focus");
-				PlayState.instance.openSubState(new PauseSubState());
-				PlayState.boyfriend.stunned = true;
-
-				PlayState.instance.persistentUpdate = false;
-				PlayState.instance.persistentDraw = true;
-				PlayState.instance.paused = true;
-
-				PlayState.instance.vocals.stop();
-				FlxG.sound.music.stop();
-			}
-		}
-	}
-
-	function onWindowFocusIn():Void
-	{
-		Debug.logTrace("IM BACK!!!");
-		(cast(Lib.current.getChildAt(0), Main)).setFPSCap(FlxG.save.data.fpsCap);
+		//do literally nothing dumbass
 	}
 }

@@ -4,57 +4,100 @@ import flixel.FlxG;
 import flixel.FlxObject;
 import flixel.FlxSprite;
 import flixel.FlxState;
+import flixel.FlxCamera;
 import flixel.addons.display.FlxGridOverlay;
 import flixel.group.FlxGroup.FlxTypedGroup;
-import flixel.text.FlxText;
-import flixel.util.FlxColor;
-import openfl.events.Event;
-import openfl.events.IOErrorEvent;
-import openfl.net.FileReference;
 import flixel.addons.ui.FlxInputText;
 import flixel.addons.ui.FlxUI9SliceSprite;
 import flixel.addons.ui.FlxUI;
-import flixel.addons.ui.FlxUIState;
+import flixel.addons.ui.FlxUIGroup;
 import flixel.addons.ui.FlxUICheckBox;
 import flixel.addons.ui.FlxUIDropDownMenu;
 import flixel.addons.ui.FlxUIInputText;
 import flixel.addons.ui.FlxUINumericStepper;
 import flixel.addons.ui.FlxUITabMenu;
 import flixel.addons.ui.FlxUITooltip.FlxUITooltipStyle;
-import ui.FlxVirtualPad;
+import openfl.net.FileReference;
+import openfl.events.Event;
+import openfl.events.IOErrorEvent;
+import flixel.text.FlxText;
+import flixel.util.FlxColor;
+import flixel.ui.FlxButton;
+import flixel.ui.FlxSpriteButton;
+using StringTools;
 /**
 	*DEBUG MODE
  */
-using StringTools;
-
-class AnimationDebug extends MusicBeatState
+class AnimationDebug extends FlxState
 {
-	var _file:FileReference;
+	var UI_box:FlxUITabMenu;
 	var bf:Boyfriend;
 	var dad:Character;
 	var char:Character;
 	var textAnim:FlxText;
 	var dumbTexts:FlxTypedGroup<FlxText>;
+	var layeringbullshit:FlxTypedGroup<FlxSprite>;
 	var animList:Array<String> = [];
 	var curAnim:Int = 0;
-	var isDad:Bool = true;
 	var daAnim:String = 'spooky';
 	var camFollow:FlxObject;
+	var camHUD:FlxCamera;
+	var camGame:FlxCamera;
+	var player:FlxUICheckBox;
+	var _file:FileReference;
+	var ghostBF:Character;
+	public static var isBF:Bool = false;
+	public static var isDad:Bool = false;
 
-	var background:FlxSprite;
-	var curt:FlxSprite;
-	var front:FlxSprite;
+	private function saveLevel()
+	{
+		var data:String = '';
+		for(anim in animList){
+			if(anim!="dischargeScared")
+				data+=anim+" "+char.animOffsets.get(anim)[0] + " "+char.animOffsets.get(anim)[1]+"\n";
+		}
 
-	var UI_box:FlxUITabMenu;
-	var UI_options:FlxUITabMenu;
-	var offsetX:FlxUINumericStepper;
-	var offsetY:FlxUINumericStepper;
+		if ((data != null) && (data.length > 0))
+		{
+			_file = new FileReference();
+			_file.addEventListener(Event.COMPLETE, onSaveComplete);
+			_file.addEventListener(Event.CANCEL, onSaveCancel);
+			_file.addEventListener(IOErrorEvent.IO_ERROR, onSaveError);
 
-	var characters:Array<String>;
+			if (isBF)
+				_file.save(data.trim(), char.curCharacter + "PlayerOffsets.txt");
+			else
+				_file.save(data.trim(), char.curCharacter + "Offsets.txt");
+		}
+	}
 
-	var _pad:FlxVirtualPad;
+	function onSaveComplete(_):Void
+	{
+		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
+		_file.removeEventListener(Event.CANCEL, onSaveCancel);
+		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
+		_file = null;
+		FlxG.log.notice("Successfully saved LEVEL DATA.");
+	}
 
-	public function new(daAnim:String = 'bf')
+	function onSaveCancel(_):Void
+	{
+		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
+		_file.removeEventListener(Event.CANCEL, onSaveCancel);
+		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
+		_file = null;
+	}
+
+	function onSaveError(_):Void
+	{
+		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
+		_file.removeEventListener(Event.CANCEL, onSaveCancel);
+		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
+		_file = null;
+		FlxG.log.error("Problem saving Level data");
+	}
+
+	public function new(daAnim:String = 'spooky')
 	{
 		super();
 		this.daAnim = daAnim;
@@ -62,158 +105,136 @@ class AnimationDebug extends MusicBeatState
 
 	override function create()
 	{
-		// FlxG.sound.music.stop();
-
-		// var gridBG:FlxSprite = FlxGridOverlay.create(10, 10);
-		// gridBG.scrollFactor.set(0.5, 0.5);
-		// add(gridBG);
-
 		FlxG.mouse.visible = true;
+		FlxG.sound.music.stop();
+		var gridBG:FlxSprite = FlxGridOverlay.create(10, 10);
+		gridBG.scrollFactor.set(0, 0);
+		add(gridBG);
 
-		background = new FlxSprite(-600, -525).loadGraphic(Paths.loadImage('stageback', 'shared'));
-		front = new FlxSprite(-650, 325).loadGraphic(Paths.loadImage('stagefront', 'shared'));
-		curt = new FlxSprite(-500, -625).loadGraphic(Paths.loadImage('stagecurtains', 'shared'));
-		background.antialiasing = FlxG.save.data.antialiasing;
-		front.antialiasing = FlxG.save.data.antialiasing;
-		curt.antialiasing = FlxG.save.data.antialiasing;
+		camHUD = new FlxCamera();
+		camHUD.bgColor.alpha = 0;
+		camGame = new FlxCamera();
 
-		background.screenCenter(X);
-		background.scale.set(0.7, 0.7);
-		front.screenCenter(X);
-		front.scale.set(0.7, 0.7);
-		curt.screenCenter(X);
-		curt.scale.set(0.7, 0.7);
+		FlxG.cameras.add(camGame);
+		FlxG.cameras.add(camHUD);
+		FlxCamera.defaultCameras = [camGame];
 
-		background.scrollFactor.set(0.9, 0.9);
-		curt.scrollFactor.set(0.9, 0.9);
-		front.scrollFactor.set(0.9, 0.9);
+		layeringbullshit = new FlxTypedGroup<FlxSprite>();
+		add(layeringbullshit);
 
-		add(background);
-		add(front);
-		add(curt);
+		UI_box = new FlxUITabMenu(null,[{name:"Character",label:"Character"}],false);
+		UI_box.cameras = [camHUD];
+		UI_box.resize(300, 200);
+		UI_box.x = (FlxG.width / 2) + 250;
+		UI_box.y = 20;
+		add(UI_box);
 
-		dad = new Character(0, 0, daAnim);
-		dad.screenCenter();
-		dad.debugMode = true;
-		add(dad);
+		var characterTab = new FlxUI(null, UI_box);
+		characterTab.name = "Character";
 
-		char = dad;
-		dad.flipX = false;
+		var characters:Array<String> = CoolUtil.coolTextFile(Paths.txt('characterList'));
 
+		var cumfart = new FlxUIDropDownMenu(50, 50, FlxUIDropDownMenu.makeStrIdLabelArray(characters, true), function(character:String)
+		{
+			daAnim=characters[Std.parseInt(character)];
+			displayCharacter(daAnim);
+		});
+		cumfart.selectedLabel = daAnim;
+
+		player = new FlxUICheckBox(175, 50, null, null, "flipX", 100);
+		player.checked = false;
+		player.callback = function()
+		{
+			char.flipX= player.checked;	
+		};
+
+		var saveButton:FlxButton = new FlxButton(100, 125, "Save", function()
+		{
+			saveLevel();
+		});
+
+		characterTab.add(cumfart);
+		characterTab.add(player);
+		characterTab.add(saveButton);
+		UI_box.addGroup(characterTab);
 		dumbTexts = new FlxTypedGroup<FlxText>();
+		dumbTexts.cameras = [camHUD];
 		add(dumbTexts);
 
 		textAnim = new FlxText(300, 16);
 		textAnim.size = 26;
-		textAnim.setBorderStyle(OUTLINE, FlxColor.BLACK, 2);
 		textAnim.scrollFactor.set();
 		add(textAnim);
-
-		genBoyOffsets();
-
-		addHelpText();
-
-		characters = CoolUtil.coolTextFile(Paths.txt('data/characterList'));
-
-		var tabs = [{name: "Offsets", label: 'Offset menu'},];
-
-		UI_box = new FlxUITabMenu(null, tabs, true);
-
-		UI_box.scrollFactor.set();
-		UI_box.resize(150, 200);
-		UI_box.x = FlxG.width - UI_box.width - 20;
-		UI_box.y = 20;
-
-		// var opt_tabs = [{name: "test", label: 'test'}];
-
-		// UI_options = new FlxUITabMenu(null, opt_tabs, true);
-
-		// UI_options.scrollFactor.set();
-		// UI_options.selected_tab = 0;
-		// UI_options.resize(300, 200);
-		// UI_options.x = UI_box.x;
-		// UI_options.y = FlxG.height - 300;
-		// no need for now
-		// add(UI_options);
-		add(UI_box);
-
-		addOffsetUI();
 
 		camFollow = new FlxObject(0, 0, 2, 2);
 		camFollow.screenCenter();
 		add(camFollow);
+		camGame.follow(camFollow);
 
-		FlxG.camera.follow(camFollow);
-
-		_pad = new FlxVirtualPad(ANIMATION, ANIMATION);
-		_pad.alpha = 0.75;
-		add(_pad);
+		displayCharacter(daAnim);
 
 		super.create();
 	}
 
-	function addOffsetUI():Void
-	{
-		var player1DropDown = new FlxUIDropDownMenu(10, 10, FlxUIDropDownMenu.makeStrIdLabelArray(characters, true), function(character:String)
+	function displayCharacter(daAnim:String){
+		dumbTexts.forEach(function(text:FlxText)
 		{
-			remove(dad);
-			dad = new Character(0, 0, characters[Std.parseInt(character)]);
+			dumbTexts.remove(text,true);
+		});
+		dumbTexts.clear();
+
+		animList=[];
+
+		if(dad!=null)
+			layeringbullshit.remove(dad);
+
+		if(bf!=null)
+			layeringbullshit.remove(bf);
+
+		if(ghostBF!=null)
+			layeringbullshit.remove(ghostBF);
+
+		ghostBF = new Character(0, 0, daAnim);
+		ghostBF.alpha = .5;
+		ghostBF.screenCenter();
+		ghostBF.debugMode = true;
+
+		layeringbullshit.add(ghostBF);
+
+		if (isDad)
+		{
+			dad = new Character(0, 0, daAnim);
 			dad.screenCenter();
 			dad.debugMode = true;
-			dad.flipX = false;
-			add(dad);
+			layeringbullshit.add(dad);
 
-			replace(char, dad);
 			char = dad;
+			dad.flipX = player.checked;
+		}
+		else if (isBF)
+		{
+			bf = new Boyfriend(0, 0, daAnim);
+			bf.screenCenter();
+			bf.debugMode = true;
+			layeringbullshit.add(bf);
 
-			dumbTexts.clear();
-			genBoyOffsets(true, true);
-			updateTexts();
-		});
+			char = bf;
+			bf.flipX = player.checked;
+		}
 
-		player1DropDown.selectedLabel = char.curCharacter;
+		genBoyOffsets();
 
-		var offsetX_label = new FlxText(10, 50, 'X Offset');
-
-		var UI_offsetX:FlxUINumericStepper = new FlxUINumericStepper(10, offsetX_label.y + offsetX_label.height + 10, 1,
-			char.animOffsets.get(animList[curAnim])[0], -500.0, 500.0, 0);
-		UI_offsetX.value = char.animOffsets.get(animList[curAnim])[0];
-		UI_offsetX.name = 'offset_x';
-		offsetX = UI_offsetX;
-
-		var offsetY_label = new FlxText(10, UI_offsetX.y + UI_offsetX.height + 10, 'Y Offset');
-
-		var UI_offsetY:FlxUINumericStepper = new FlxUINumericStepper(10, offsetY_label.y + offsetY_label.height + 10, 1,
-			char.animOffsets.get(animList[curAnim])[0], -500.0, 500.0, 0);
-		UI_offsetY.value = char.animOffsets.get(animList[curAnim])[1];
-		UI_offsetY.name = 'offset_y';
-		offsetY = UI_offsetY;
-
-		var tab_group_offsets = new FlxUI(null, UI_box);
-		tab_group_offsets.name = "Offsets";
-
-		tab_group_offsets.add(offsetX_label);
-		tab_group_offsets.add(offsetY_label);
-		tab_group_offsets.add(UI_offsetX);
-		tab_group_offsets.add(UI_offsetY);
-		tab_group_offsets.add(player1DropDown);
-
-		UI_box.addGroup(tab_group_offsets);
 	}
 
-	function genBoyOffsets(pushList:Bool = true, ?cleanArray:Bool = false):Void
+	function genBoyOffsets(pushList:Bool = true):Void
 	{
-		if (cleanArray)
-			animList.splice(0, animList.length);
-
 		var daLoop:Int = 0;
 
 		for (anim => offsets in char.animOffsets)
 		{
 			var text:FlxText = new FlxText(10, 20 + (18 * daLoop), 0, anim + ": " + offsets, 15);
 			text.scrollFactor.set();
-			text.setBorderStyle(OUTLINE, FlxColor.BLACK, 2);
-			text.color = FlxColor.WHITE;
+			text.color = FlxColor.BLUE;
 			dumbTexts.add(text);
 
 			if (pushList)
@@ -223,153 +244,53 @@ class AnimationDebug extends MusicBeatState
 		}
 	}
 
-	function saveBoyOffsets():Void
-	{
-		var result = "";
-
-		for (anim => offsets in char.animOffsets)
-		{
-			var text = anim + " " + offsets.join(" ");
-			result += text + "\n";
-		}
-
-		openfl.system.System.setClipboard(result.trim());
-
-		if ((result != null) && (result.length > 0))
-		{
-			_file = new FileReference();
-			_file.addEventListener(Event.COMPLETE, onSaveComplete);
-			_file.addEventListener(Event.CANCEL, onSaveCancel);
-			_file.addEventListener(IOErrorEvent.IO_ERROR, onSaveError);
-			_file.save(result.trim(), daAnim + "Offsets.txt");
-		}
-	}
-
-	/**
-	 * Called when the save file dialog is completed.
-	 */
-	function onSaveComplete(_):Void
-	{
-		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
-		_file.removeEventListener(Event.CANCEL, onSaveCancel);
-		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
-		_file = null;
-		FlxG.log.notice("Successfully saved OFFSET DATA.");
-	}
-
-	/**
-	 * Called when the save file dialog is cancelled.
-	 */
-	function onSaveCancel(_):Void
-	{
-		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
-		_file.removeEventListener(Event.CANCEL, onSaveCancel);
-		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
-		_file = null;
-	}
-
-	/**
-	 * Called if there is an error while saving the offset data.
-	 */
-	function onSaveError(_):Void
-	{
-		_file.removeEventListener(Event.COMPLETE, onSaveComplete);
-		_file.removeEventListener(Event.CANCEL, onSaveCancel);
-		_file.removeEventListener(IOErrorEvent.IO_ERROR, onSaveError);
-		_file = null;
-		FlxG.log.error("Problem saving Offset data");
-	}
-
 	function updateTexts():Void
 	{
-		offsetX.value = char.animOffsets.get(animList[curAnim])[0];
-		offsetY.value = char.animOffsets.get(animList[curAnim])[1];
-
 		dumbTexts.forEach(function(text:FlxText)
 		{
 			text.kill();
 			dumbTexts.remove(text, true);
 		});
-	}
+		dumbTexts.clear();
 
-	var helpText:FlxText;
-
-	function addHelpText():Void
-	{
-		var helpTextValue = "Help:\nIN/OUT : Zoom in and out\nUP/DOWN : Cycle Animation\nDrag : Offset Animation\nA : Replay Animation\nSAVE : Save Offsets to ClipBoard\nB : Exit";
-		helpText = new FlxText(940, 20, 0, helpTextValue, 15);
-		helpText.scrollFactor.set();
-		helpText.y = FlxG.height - helpText.height - 20;
-		helpText.setBorderStyle(OUTLINE, FlxColor.BLACK, 2);
-		helpText.color = FlxColor.WHITE;
-
-		add(helpText);
-	}
-
-	override function getEvent(id:String, sender:Dynamic, data:Dynamic, ?params:Array<Dynamic>)
-	{
-		if (id == FlxUINumericStepper.CHANGE_EVENT && (sender is FlxUINumericStepper))
-		{
-			var offset:FlxUINumericStepper = cast sender;
-			var offsetName = offset.name;
-			switch (offsetName)
-			{
-				case 'offset_x':
-					char.animOffsets.get(animList[curAnim])[0] = offset.value;
-					updateTexts();
-					genBoyOffsets(false);
-					char.playAnim(animList[curAnim]);
-				case 'offset_y':
-					char.animOffsets.get(animList[curAnim])[1] = offset.value;
-					updateTexts();
-					genBoyOffsets(false);
-					char.playAnim(animList[curAnim]);
-			}
-		}
 	}
 
 	override function update(elapsed:Float)
 	{
 		textAnim.text = char.animation.curAnim.name;
+		ghostBF.flipX = char.flipX;
 
-		if (FlxG.mouse.overlaps(char) && FlxG.mouse.pressed)
-		{
-			// HOW THE FUCK DO I CONVERT THIS
-			char.animOffsets.get(animList[curAnim])[0] = -Math.round(FlxG.mouse.x - char.frameWidth * 1.5);
-			char.animOffsets.get(animList[curAnim])[1] = -Math.round(FlxG.mouse.y - char.frameHeight / 2);
-
-			updateTexts();
-			genBoyOffsets(false);
-			char.playAnim(animList[curAnim]);
-			// TO MOUSE MOVEMENT?????????
-		}
-
-		if (_pad.buttonB.justPressed)
+		if (FlxG.keys.justPressed.ENTER)
 		{
 			FlxG.mouse.visible = false;
-			FlxG.switchState(new PlayState());
+			LoadingState.loadAndSwitchState(new PlayState());
 		}
 
-		if (_pad.buttonIn.justPressed)
-			FlxG.camera.zoom += 0.25;
-		if (_pad.buttonOut.justPressed)
-			FlxG.camera.zoom -= 0.25;
-
-		if (FlxG.keys.justPressed.F)
-			char.flipX = !char.flipX;
-
-		if (_pad.buttonUp.pressed || _pad.buttonDown.pressed || _pad.buttonLeft.pressed || _pad.buttonRight.pressed)
+		if (FlxG.keys.justPressed.X)
 		{
-			if (_pad.buttonUp.pressed)
+			if(isDad)
+				dad.flipX = !dad.flipX;
+			else
+				bf.flipX = !bf.flipX;
+		}
+			
+		if (FlxG.keys.justPressed.E)
+			camGame.zoom += 0.25;
+		if (FlxG.keys.justPressed.Q)
+			camGame.zoom -= 0.25;
+
+		if (FlxG.keys.pressed.I || FlxG.keys.pressed.J || FlxG.keys.pressed.K || FlxG.keys.pressed.L)
+		{
+			if (FlxG.keys.pressed.I)
 				camFollow.velocity.y = -90;
-			else if (_pad.buttonDown.pressed)
+			else if (FlxG.keys.pressed.K)
 				camFollow.velocity.y = 90;
 			else
 				camFollow.velocity.y = 0;
 
-			if (_pad.buttonLeft.pressed)
+			if (FlxG.keys.pressed.J)
 				camFollow.velocity.x = -90;
-			else if (_pad.buttonRight.pressed)
+			else if (FlxG.keys.pressed.L)
 				camFollow.velocity.x = 90;
 			else
 				camFollow.velocity.x = 0;
@@ -377,14 +298,14 @@ class AnimationDebug extends MusicBeatState
 		else
 		{
 			camFollow.velocity.set();
-		} 
+		}
 
-		if (_pad.buttonUp2.justPressed)
+		if (FlxG.keys.justPressed.W)
 		{
 			curAnim -= 1;
 		}
 
-		if (_pad.buttonDown2.justPressed)
+		if (FlxG.keys.justPressed.S)
 		{
 			curAnim += 1;
 		}
@@ -395,10 +316,13 @@ class AnimationDebug extends MusicBeatState
 		if (curAnim >= animList.length)
 			curAnim = 0;
 
-		if (_pad.buttonDown2.justPressed || _pad.buttonUp2.justPressed || _pad.buttonA.justPressed)
+		if (FlxG.keys.justPressed.S || FlxG.keys.justPressed.W || FlxG.keys.justPressed.SPACE)
 		{
 			char.playAnim(animList[curAnim]);
-
+			if (ghostBF.animOffsets.exists('danceLeft'))
+				ghostBF.playAnim('danceLeft');
+			else
+				ghostBF.playAnim('idle');
 			updateTexts();
 			genBoyOffsets(false);
 		}
@@ -409,9 +333,12 @@ class AnimationDebug extends MusicBeatState
 		var leftP = FlxG.keys.anyJustPressed([LEFT]);
 
 		var holdShift = FlxG.keys.pressed.SHIFT;
+		var holdAlt = FlxG.keys.pressed.ALT;
 		var multiplier = 1;
 		if (holdShift)
 			multiplier = 10;
+		if (holdShift && holdAlt)
+			multiplier = 50;
 
 		if (upP || rightP || downP || leftP)
 		{
@@ -428,15 +355,12 @@ class AnimationDebug extends MusicBeatState
 			updateTexts();
 			genBoyOffsets(false);
 			char.playAnim(animList[curAnim]);
+
+			if (ghostBF.animOffsets.exists('danceLeft'))
+				ghostBF.playAnim('danceLeft');
+			else
+				ghostBF.playAnim('idle');
 		}
-
-		if (_pad.buttonSave.justPressed)
-			saveBoyOffsets();
-
-		if (FlxG.keys.justPressed.F1)
-			FlxG.save.data.showHelp = !FlxG.save.data.showHelp;
-
-		helpText.visible = FlxG.save.data.showHelp;
 
 		super.update(elapsed);
 	}
